@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace bfi
 {
@@ -8,18 +9,62 @@ namespace bfi
         {
             Console.WriteLine("bf.Net");
             Console.WriteLine("");
+            Console.WriteLine("Example Program:");
+            Console.WriteLine("++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.");
+            Console.WriteLine("");
+            Console.WriteLine("Type EXIT to quit.");
+            Console.WriteLine("");
+            Console.WriteLine("");
 
             while (true)
             {
-                Console.WriteLine(">");
+                Console.Write(">::  ");
                 var instructions = Console.ReadLine();
                 if (instructions == "EXIT") return;
 
-
-                //var instructions = "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.";
-                var tape = new byte[10000];
-                var dataPointer = 5000;
+                var tape = new Tape();
+                var dataPointer = 0;
                 var instructionPointer = 0;
+
+                var codeOk = true;
+                var openBrackets = new Stack<int>();
+                var openToClose = new Dictionary<int, int>();
+                var closeToOpen = new Dictionary<int, int>();
+                for (int i = 0; i < instructions.Length; i++)
+                {
+                    var currentInstruction = instructions[i];
+                    switch (currentInstruction)
+                    {
+                        case '[':
+                            openBrackets.Push(i);
+                            break;
+                        case ']':
+                            var closeLocation = i;
+                            if (openBrackets.Count == 0)
+                            {
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.WriteLine($"Closing ] bracket at position {i} has no matching open branket [");
+                                Console.ResetColor();
+                                codeOk = false;
+                                break;
+                            }
+
+                            var openLocation = openBrackets.Pop();
+                            openToClose.Add(openLocation, closeLocation);
+                            closeToOpen.Add(closeLocation, openLocation);
+                            break;
+                    }
+                }
+
+                while (openBrackets.Count != 0)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"Open [ bracket at position {openBrackets.Pop()} has no matching closing branket ]");
+                    Console.ResetColor();
+                    codeOk = false;
+                }
+
+                if (!codeOk) continue;
 
                 while (instructionPointer < instructions.Length)
                 {
@@ -29,69 +74,38 @@ namespace bfi
                     {
                         case '<':
                             dataPointer--;
-                            instructionPointer++;
                             break;
                         case '>':
                             dataPointer++;
-                            instructionPointer++;
                             break;
                         case '+':
-                            tape[dataPointer] = (byte)(tape[dataPointer] + 1);
-                            instructionPointer++;
+                            tape.Write(dataPointer, (byte)(tape.Read(dataPointer) + 1));
                             break;
                         case '-':
-                            tape[dataPointer] = (byte)(tape[dataPointer] - 1);
-                            instructionPointer++;
+                            tape.Write(dataPointer, (byte)(tape.Read(dataPointer) - 1));
                             break;
                         case '.':
-                            Console.Write((char)tape[dataPointer]);
-                            instructionPointer++;
+                            Console.Write((char)tape.Read(dataPointer));
                             break;
                         case ',':
-                            tape[dataPointer] = (byte)Console.ReadKey().KeyChar;
-                            instructionPointer++;
+                            tape.Write(dataPointer, (byte)Console.ReadKey().KeyChar);
                             break;
                         case '[':
-                            if (tape[dataPointer] == 0)
+                            if (tape.Read(dataPointer) == 0)
                             {
-                                var openBrackets = 1;
-                                while (openBrackets != 0)
-                                {
-                                    instructionPointer++;
-                                    if (instructions[instructionPointer] == '[')
-                                    {
-                                        openBrackets++;
-                                    }
-                                    else if (instructions[instructionPointer] == ']')
-                                    {
-                                        openBrackets--;
-                                    }
-                                }
+                                instructionPointer = openToClose[instructionPointer];
                             }
-                            instructionPointer++;
                             break;
                         case ']':
-                            if (tape[dataPointer] != 0)
+                            if (tape.Read(dataPointer) != 0)
                             {
-                                var openBrackets = 1;
-                                while (openBrackets != 0)
-                                {
-                                    instructionPointer--;
-                                    if (instructions[instructionPointer] == '[')
-                                    {
-                                        openBrackets--;
-                                    }
-                                    else if (instructions[instructionPointer] == ']')
-                                    {
-                                        openBrackets++;
-                                    }
-                                }
+                                instructionPointer = closeToOpen[instructionPointer];
                             }
-                            instructionPointer++;
-                            break;
-                        default:
                             break;
                     }
+
+                    instructionPointer++;
+
                 }
             }
         }
