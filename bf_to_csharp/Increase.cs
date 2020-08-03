@@ -2,6 +2,7 @@
 
 namespace bf_to_csharp
 {
+
     class Increase : IInstruction
     {
         public void EmitCSharp(StringBuilder sb, int indents)

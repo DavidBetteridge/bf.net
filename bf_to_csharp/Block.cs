@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Text;
 
 namespace bf_to_csharp
@@ -8,6 +9,7 @@ namespace bf_to_csharp
         private List<IInstruction> _instructions = new List<IInstruction>();
 
         public Block Parent { get; internal set; }
+        public ReadOnlyCollection<IInstruction> Instructions => _instructions.AsReadOnly();
 
         public Block(Block parent = null)
         {

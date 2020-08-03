@@ -33,9 +33,12 @@ namespace bf_to_csharp
 
             var rootBlock = ParseSourceCode(sourceCode);
 
+            rootBlock = Optimiser.Optimise(rootBlock, null);
+
             GenerateCSharp(projectName, projectFolder, rootBlock);
 
         }
+
 
         private static void GenerateCSharp(string projectName, string projectFolder, Block rootBlock)
         {
