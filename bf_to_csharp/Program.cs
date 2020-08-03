@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 
 namespace bf_to_csharp
@@ -28,95 +29,98 @@ namespace bf_to_csharp
             var projectFolder = Path.Combine(parentFolder, projectName);
             Directory.CreateDirectory(projectFolder);
 
-            var instructions = File.ReadAllText(sourceCodeFile);
+            var sourceCode = File.ReadAllText(sourceCodeFile);
+
+            var rootBlock = ParseSourceCode(sourceCode);
+
+            GenerateCSharp(projectName, projectFolder, rootBlock);
+
+        }
+
+        private static void GenerateCSharp(string projectName, string projectFolder, Block rootBlock)
+        {
             var sb = new StringBuilder();
-            var indent = 3;
-            foreach (var instruction in instructions)
+            rootBlock.EmitCSharp(sb, 3);
+
+            File.WriteAllText(Path.Combine(projectFolder, "program.cs"), Header(projectName) + sb.ToString() + Footer());
+
+            var pathToProjectFile = Path.Combine(projectFolder, projectName + ".csproj");
+            GenerateProjectFile(pathToProjectFile);
+            var myProcess = new Process();
+            myProcess.StartInfo.UseShellExecute = false;
+            myProcess.StartInfo.FileName = "dotnet";
+            myProcess.StartInfo.Arguments = $@"build ""{pathToProjectFile}""";
+            myProcess.StartInfo.CreateNoWindow = true;
+            myProcess.Start();
+        }
+
+        private static Block ParseSourceCode(string sourceCode)
+        {
+            var rootBlock = new Block();
+            var currentBlock = rootBlock;
+            foreach (var instruction in sourceCode)
             {
                 switch (instruction)
                 {
                     case '>':
-                        EmitCSharp("dataPointer++;");
+                        currentBlock.Add(new MoveRight());
                         break;
                     case '<':
-                        EmitCSharp("dataPointer--;");
+                        currentBlock.Add(new MoveLeft());
                         break;
                     case '+':
-                        EmitCSharp("tape[dataPointer]=(byte)(tape[dataPointer]+1);");
+                        currentBlock.Add(new Increase());
                         break;
                     case '-':
-                        EmitCSharp("tape[dataPointer]=(byte)(tape[dataPointer]-1);");
+                        currentBlock.Add(new Decrease());
                         break;
                     case '.':
-                        EmitCSharp("Console.Write((char)tape[dataPointer]);");
+                        currentBlock.Add(new WriteToConsole());
                         break;
                     case ',':
-                        EmitCSharp("tape[dataPointer] = (byte)Console.ReadKey().KeyChar;");
+                        currentBlock.Add(new ReadFromConsole());
                         break;
                     case '[':
-                        EmitCSharp("while (tape[dataPointer] != 0) {");
-                        indent++;
+                        var newBlock = new Block(currentBlock);
+                        currentBlock.Add(newBlock);
+                        currentBlock = newBlock;
                         break;
                     case ']':
-                        indent--;
-                        EmitCSharp("}");
+                        currentBlock = currentBlock.Parent;
                         break;
                     default:
                         break;
                 }
             }
 
-            File.WriteAllText(Path.Combine(projectFolder, "program.cs"), Header(projectName) + sb.ToString() + Footer());
-
-            var pathToProjectFile = Path.Combine(projectFolder, projectName + ".csproj");
-            GenerateProjectFile(pathToProjectFile);
-
-            using var myProcess = new Process();
-            myProcess.StartInfo.UseShellExecute = false;
-            myProcess.StartInfo.FileName = "dotnet";
-            myProcess.StartInfo.Arguments = $@"build ""{pathToProjectFile}""";
-            myProcess.StartInfo.CreateNoWindow = true;
-            myProcess.Start();
-
-            void EmitCSharp(string code)
-            {
-                sb.AppendLine(new string('\t', indent) + code);
-            }
+            return rootBlock;
         }
 
         private static void GenerateProjectFile(string filename)
         {
-            var contents = @"<Project Sdk=""Microsoft.NET.Sdk"">
+            var contents = ReadTemplate("projectFile.txt");
 
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
-  </PropertyGroup>
-
-</Project>
-";
             File.WriteAllText(filename, contents);
-
         }
 
-        private static string Header(string projectName) =>
-            @"using System;
-using System.Collections.Generic;
-
-namespace " + projectName + @"
-{
-    class Program
-    {
-        static void Main(string[] args)
+        private static string Header(string projectName)
         {
-            var tape = new byte[10000];
-            var dataPointer = 5000;
-";
+            return ReadTemplate("header.txt")
+                        .Replace("{{namespace}}", projectName);
+        }
 
-        private static string Footer() =>
-            @"        }
-    }
-}";
+        private static string Footer() => ReadTemplate("footer.txt");
+
+        private static string ReadTemplate(string templateName)
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            var resourceName = "bf_to_csharp.Templates." + templateName;
+
+            using var stream = assembly.GetManifestResourceStream(resourceName);
+            using var reader = new StreamReader(stream);
+
+            return reader.ReadToEnd();
+        }
 
     }
 
