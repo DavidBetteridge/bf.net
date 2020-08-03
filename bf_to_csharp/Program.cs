@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace bf_to_csharp
@@ -8,7 +10,25 @@ namespace bf_to_csharp
     {
         static void Main(string[] args)
         {
-            var instructions = "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.";
+            if (!args.Any())
+            {
+                Console.WriteLine("Please supply the path to the source code file.");
+                return;
+            }
+            var sourceCodeFile = args[0];
+
+            if (!File.Exists(sourceCodeFile))
+            {
+                Console.WriteLine($"The source code file {sourceCodeFile} does not exist.");
+                return;
+            }
+
+            var parentFolder = Path.GetDirectoryName(sourceCodeFile);
+            var projectName = Path.GetFileNameWithoutExtension(sourceCodeFile);
+            var projectFolder = Path.Combine(parentFolder, projectName);
+            Directory.CreateDirectory(projectFolder);
+
+            var instructions = File.ReadAllText(sourceCodeFile);
             var sb = new StringBuilder();
             var indent = 3;
             foreach (var instruction in instructions)
@@ -46,13 +66,21 @@ namespace bf_to_csharp
                 }
             }
 
-            File.WriteAllText(@"C:\personal\bf.net\bf_to_csharp\generated\program.cs", Header() + sb.ToString() + Footer());
+            File.WriteAllText(Path.Combine(projectFolder, "program.cs"), Header(projectName) + sb.ToString() + Footer());
 
-            GenerateProjectFile(@"C:\personal\bf.net\bf_to_csharp\generated\generated.csproj");
+            var pathToProjectFile = Path.Combine(projectFolder, projectName + ".csproj");
+            GenerateProjectFile(pathToProjectFile);
+
+            using var myProcess = new Process();
+            myProcess.StartInfo.UseShellExecute = false;
+            myProcess.StartInfo.FileName = "dotnet";
+            myProcess.StartInfo.Arguments = $@"build ""{pathToProjectFile}""";
+            myProcess.StartInfo.CreateNoWindow = true;
+            myProcess.Start();
 
             void EmitCSharp(string code)
             {
-                sb.AppendLine(new string('\t',indent) + code);
+                sb.AppendLine(new string('\t', indent) + code);
             }
         }
 
@@ -71,11 +99,11 @@ namespace bf_to_csharp
 
         }
 
-        private static string Header() =>
+        private static string Header(string projectName) =>
             @"using System;
 using System.Collections.Generic;
 
-namespace bfi
+namespace " + projectName + @"
 {
     class Program
     {

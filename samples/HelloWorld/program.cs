@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace bfi
+namespace HelloWorld
 {
     class Program
     {

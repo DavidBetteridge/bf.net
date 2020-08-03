@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "bf_to_csharp": {
+      "commandName": "Project",
+      "commandLineArgs": "\"C:\\personal\\bf.net\\samples\\Echo.bf\""
+    }
+  }
+}
