@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -31,14 +32,52 @@ namespace bf_to_csharp
 
             var sourceCode = File.ReadAllText(sourceCodeFile);
 
-            var rootBlock = ParseSourceCode(sourceCode);
+            var errors = new List<Error>();
+            var rootBlock = ParseSourceCode(sourceCode, errors);
+
+            if (errors.Any())
+            {
+                DisplayErrors(errors);
+                return;
+            }
 
             rootBlock = Optimiser.Optimise(rootBlock, null);
+
+            CheckForEmptyLoops(rootBlock, errors);
+            if (errors.Any())
+            {
+                DisplayErrors(errors);
+                return;
+            }
 
             GenerateCSharp(projectName, projectFolder, rootBlock);
 
         }
 
+        private static void CheckForEmptyLoops(Block rootBlock, List<Error> errors)
+        {
+            foreach (var loop in rootBlock.Instructions.OfType<Block>())
+            {
+                if (loop.Instructions.Any())
+                {
+                    CheckForEmptyLoops(loop, errors);
+                }
+                else
+                {
+                    errors.Add(new Error(loop.Location, "Empty loop - either will do nothing or loop infinitely"));
+                }
+            }
+        }
+
+        private static void DisplayErrors(List<Error> errors)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            foreach (var error in errors.OrderBy(e => e.Location))
+            {
+                Console.WriteLine($"Error at position {error.Location} - {error.Description}");
+            }
+            Console.ResetColor();
+        }
 
         private static void GenerateCSharp(string projectName, string projectFolder, Block rootBlock)
         {
@@ -57,10 +96,11 @@ namespace bf_to_csharp
             myProcess.Start();
         }
 
-        private static Block ParseSourceCode(string sourceCode)
+        private static Block ParseSourceCode(string sourceCode, List<Error> errors)
         {
             var rootBlock = new Block();
             var currentBlock = rootBlock;
+            var location = 1;
             foreach (var instruction in sourceCode)
             {
                 switch (instruction)
@@ -84,16 +124,30 @@ namespace bf_to_csharp
                         currentBlock.Add(new ReadFromConsole());
                         break;
                     case '[':
-                        var newBlock = new Block(currentBlock);
+                        var newBlock = new Block(currentBlock, location);
                         currentBlock.Add(newBlock);
                         currentBlock = newBlock;
                         break;
                     case ']':
-                        currentBlock = currentBlock.Parent;
+                        if (currentBlock.Parent is null)
+                        {
+                            errors.Add(new Error(location, "] does not have a matching ["));
+                        }
+                        else
+                        {
+                            currentBlock = currentBlock.Parent;
+                        }
                         break;
                     default:
                         break;
                 }
+                location++;
+            }
+
+            while (currentBlock.Parent is object)
+            {
+                errors.Add(new Error(currentBlock.Location, "[ does not have a matching ]"));
+                currentBlock = currentBlock.Parent;
             }
 
             return rootBlock;

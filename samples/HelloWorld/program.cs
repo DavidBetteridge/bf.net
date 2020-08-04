@@ -9,7 +9,7 @@ namespace HelloWorld
         {
             var tape = new byte[10000];
             var dataPointer = 5000;
-			tape[dataPointer]+=8;
+			tape[dataPointer]+=10;
 			while (tape[dataPointer] != 0) {
 				dataPointer+=1;
 				tape[dataPointer]+=4;
