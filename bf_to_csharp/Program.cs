@@ -37,6 +37,8 @@ namespace bf_to_csharp
 
             rootBlock = Optimiser.Optimise(rootBlock, null);
 
+            rootBlock = Lower(rootBlock);
+
             GenerateCSharp(projectName, projectFolder, rootBlock);
 
             var assemblies = new List<AssemblyDefinition>()
@@ -51,10 +53,10 @@ namespace bf_to_csharp
 
             var writeLine_String = ResolveMethod(assemblies, assemblyDefinition, "System.Console", "WriteLine", new[] { "System.String" });
             var write_Char = ResolveMethod(assemblies, assemblyDefinition, "System.Console", "Write", new[] { "System.Char" });
+            var readKey = ResolveMethod(assemblies, assemblyDefinition, "System.Console", "ReadKey", Array.Empty<string>());
             var systemObjectRef = ResolveType(assemblies, assemblyDefinition, "System.Object");
             var voidTypeRef = ResolveType(assemblies, assemblyDefinition, "System.Void");
             var byteTypeRef = ResolveType(assemblies, assemblyDefinition, "System.Byte");
-            //var intTypeRef = ResolveType(assemblies, assemblyDefinition, "System.Int32");
 
             var mainModule = assemblyDefinition.MainModule;
 
@@ -65,7 +67,7 @@ namespace bf_to_csharp
             type.Methods.Add(main);
 
             main.Body.InitLocals = true;
-            main.Body.Variables.Add(new VariableDefinition(mainModule.TypeSystem.Int32));  //tape
+            main.Body.Variables.Add(new VariableDefinition(new ArrayType(mainModule.TypeSystem.Byte)  ));  //tape
             main.Body.Variables.Add(new VariableDefinition(mainModule.TypeSystem.Int32));  //dataPointer
 
             var il = main.Body.GetILProcessor();
@@ -83,21 +85,40 @@ namespace bf_to_csharp
 
             foreach (var instruction in rootBlock.Instructions)
             {
+                il.Emit(OpCodes.Ldstr, instruction.GetType().Name);
+                il.Emit(OpCodes.Call, writeLine_String);
+
                 switch (instruction)
                 {
                     case Block block:
                         break;
 
                     case WriteToConsole w:
+                        il.Emit(OpCodes.Ldloc_0);
+                        il.Emit(OpCodes.Ldloc_1);
+                        il.Emit(OpCodes.Ldelema, byteTypeRef);
+                        il.Emit(OpCodes.Ldind_U1);
+                        il.Emit(OpCodes.Call, write_Char);
                         break;
 
-                    case ReadFromConsole r:
-                        break;
+                    //case ReadFromConsole r:
+                    //    il.Emit(OpCodes.Ldloc_0);
+                    //    il.Emit(OpCodes.Ldloc_1);
+                    //    il.Emit(OpCodes.Ldelema, byteTypeRef);
+                    //    il.Emit(OpCodes.Call, readKey);
+                    //    il.Emit(OpCodes.Conv_U1);
+                    //    il.Emit(OpCodes.Stind_I1);
+                    //    break;
 
                     case Move move:
                         il.Emit(OpCodes.Ldloc_1);
-                        il.Emit(OpCodes.Ldc_I4, move.Quantity);
-                        il.Emit(OpCodes.Add);
+
+                        il.Emit(OpCodes.Ldc_I4, Math.Abs(move.Quantity));
+                        if (move.Quantity > 0)
+                            il.Emit(OpCodes.Add);
+                        else
+                            il.Emit(OpCodes.Sub);
+
                         il.Emit(OpCodes.Stloc_1);
                         break;
 
@@ -116,28 +137,50 @@ namespace bf_to_csharp
                         break;
 
                     case Decrease decrease:
+                        il.Emit(OpCodes.Ldloc_0);  // push tape onto the stack
+                        il.Emit(OpCodes.Ldloc_1);  // push dataPointer onto the stack
+                        il.Emit(OpCodes.Ldelema, byteTypeRef);  // pop,pop and then put the address of tape[dataPointer] onto the stack
+                        il.Emit(OpCodes.Dup);           // duplicate the address of tape[dataPointer] onto the stack
+                        il.Emit(OpCodes.Ldind_U1);      // pop,  load the value of  tape[dataPointer] onto the stack
+                        il.Emit(OpCodes.Ldc_I4_1);      // push 1 onto the stack
+                        il.Emit(OpCodes.Sub);           // pop,pop add values and put result onto the stack
+                        il.Emit(OpCodes.Conv_U1);       // we added the values as ints,  so cast back into a byte
+                        il.Emit(OpCodes.Stind_I1);      // store the value on the head of the stack, into the address also on the stack
                         break;
 
                     case Increase increase:
+                        il.Emit(OpCodes.Ldloc_0);  // push tape onto the stack
+                        il.Emit(OpCodes.Ldloc_1);  // push dataPointer onto the stack
+                        il.Emit(OpCodes.Ldelema, byteTypeRef);  // pop,pop and then put the address of tape[dataPointer] onto the stack
+                        il.Emit(OpCodes.Dup);           // duplicate the address of tape[dataPointer] onto the stack
+                        il.Emit(OpCodes.Ldind_U1);      // pop,  load the value of  tape[dataPointer] onto the stack
+                        il.Emit(OpCodes.Ldc_I4_1);      // push 1 onto the stack
+                        il.Emit(OpCodes.Add);           // pop,pop add values and put result onto the stack
+                        il.Emit(OpCodes.Conv_U1);       // we added the values as ints,  so cast back into a byte
+                        il.Emit(OpCodes.Stind_I1);      // store the value on the head of the stack, into the address also on the stack
+                        break;
+
+                    case IncreaseCell increaseCell:
+                        il.Emit(OpCodes.Ldloc_0);  // push tape onto the stack
+                        il.Emit(OpCodes.Ldloc_1);  // push dataPointer onto the stack
+                        il.Emit(OpCodes.Ldelema, byteTypeRef);  // pop,pop and then put the address of tape[dataPointer] onto the stack
+                        il.Emit(OpCodes.Dup);           // duplicate the address of tape[dataPointer] onto the stack
+                        il.Emit(OpCodes.Ldind_U1);      // pop,  load the value of  tape[dataPointer] onto the stack
+
+                        il.Emit(OpCodes.Ldc_I4, Math.Abs(increaseCell.Quantity));
+                        if (increaseCell.Quantity > 0)
+                            il.Emit(OpCodes.Add);
+                        else
+                            il.Emit(OpCodes.Sub);
+
+                        il.Emit(OpCodes.Conv_U1);       // we added the values as ints,  so cast back into a byte
+                        il.Emit(OpCodes.Stind_I1);      // store the value on the head of the stack, into the address also on the stack
                         break;
 
                     default:
                         break;
                 }
             }
-
-            //    // >
-            //    il.Emit(OpCodes.Ldloc_1);
-            //il.Emit(OpCodes.Ldc_I4_1);
-            //il.Emit(OpCodes.Add);
-            //il.Emit(OpCodes.Stloc_1);
-
-            //// <
-            //il.Emit(OpCodes.Ldloc_1);
-            //il.Emit(OpCodes.Ldc_I4_1);
-            //il.Emit(OpCodes.Sub);
-            //il.Emit(OpCodes.Stloc_1);
-
 
             il.Emit(OpCodes.Nop);
             il.Emit(OpCodes.Ldstr, "Hello, Mate!");
@@ -149,6 +192,39 @@ namespace bf_to_csharp
             assemblyDefinition.Write(fileName);
         }
 
+        private static Block Lower(Block originalBlock)
+        {
+            var newBlock = new Block();
+            var labelCount = 0;
+
+            DoWork(originalBlock, newBlock);
+
+            return newBlock;
+
+
+
+            void DoWork(Block originalBlock, Block newBlock)
+            {
+                foreach (var instruction in originalBlock.Instructions)
+                {
+                    switch (instruction)
+                    {
+                        case Block block:
+                            newBlock.Add(new Label($"loopStart_{labelCount}"));
+                            newBlock.Add(new ConditionalJump($"loopEnd_{labelCount}"));
+                            DoWork(block, newBlock);
+                            newBlock.Add(new Jump($"loopStart_{labelCount}"));
+                            newBlock.Add(new Label($"loopEnd_{labelCount}"));
+                            labelCount++;
+                            break;
+
+                        default:
+                            newBlock.Add(instruction);
+                            break;
+                    }
+                }
+            }
+        }
 
         static TypeReference ResolveType(List<AssemblyDefinition> assemblies, AssemblyDefinition assemblyDefinition, string metadataName)
         {
