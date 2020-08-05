@@ -5,7 +5,7 @@ namespace HelloWorld
 {
     class Program
     {
-        static void Main(string[] args)
+        static void Main()
         {
             var tape = new byte[10000];
             var dataPointer = 5000;

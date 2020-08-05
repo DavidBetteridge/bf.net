@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -27,7 +28,7 @@ namespace bf_to_csharp
             var parentFolder = Path.GetDirectoryName(sourceCodeFile);
             var projectName = Path.GetFileNameWithoutExtension(sourceCodeFile);
             var projectFolder = Path.Combine(parentFolder, projectName);
-            
+
             Directory.CreateDirectory(projectFolder);
 
             var sourceCode = File.ReadAllText(sourceCodeFile);
@@ -38,63 +39,186 @@ namespace bf_to_csharp
 
             GenerateCSharp(projectName, projectFolder, rootBlock);
 
-            var fileName = Path.Combine(projectFolder, projectName + ".exe");
-            var assemblyNameDefinition = new AssemblyNameDefinition(projectName, new Version(1, 0, 0, 0));
-            using (var assemblyDefinition = AssemblyDefinition.CreateAssembly(assemblyNameDefinition, projectName, ModuleKind.Console))
+            var assemblies = new List<AssemblyDefinition>()
             {
-                var mainModule = assemblyDefinition.MainModule;
+                AssemblyDefinition.ReadAssembly(@"C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\3.1.0\ref\netcoreapp3.1\System.Console.dll"),
+                AssemblyDefinition.ReadAssembly(@"C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\3.1.0\ref\netcoreapp3.1\System.Runtime.dll")
+            };
 
-                var pathToSystemConsole = @"C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\3.1.0\ref\netcoreapp3.1\System.Console.dll";
-                var systemConsoleAssembly = AssemblyDefinition.ReadAssembly(pathToSystemConsole);
+            var fileName = Path.Combine(projectFolder, projectName + ".dll");
+            var assemblyNameDefinition = new AssemblyNameDefinition(projectName, new Version(1, 0, 0, 0));
+            using var assemblyDefinition = AssemblyDefinition.CreateAssembly(assemblyNameDefinition, projectName, ModuleKind.Console);
 
-                var pathToSystemRuntime = @"C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\3.1.0\ref\netcoreapp3.1\System.Runtime.dll";
-                var systemRuntimeAssembly = AssemblyDefinition.ReadAssembly(pathToSystemRuntime);
+            var writeLine_String = ResolveMethod(assemblies, assemblyDefinition, "System.Console", "WriteLine", new[] { "System.String" });
+            var write_Char = ResolveMethod(assemblies, assemblyDefinition, "System.Console", "Write", new[] { "System.Char" });
+            var systemObjectRef = ResolveType(assemblies, assemblyDefinition, "System.Object");
+            var voidTypeRef = ResolveType(assemblies, assemblyDefinition, "System.Void");
+            var byteTypeRef = ResolveType(assemblies, assemblyDefinition, "System.Byte");
+            //var intTypeRef = ResolveType(assemblies, assemblyDefinition, "System.Int32");
 
-                var systemObjectType = systemRuntimeAssembly.Modules
-                                      .SelectMany(m => m.Types)
-                                      .Where(t => t.FullName == "System.Object")
-                                      .SingleOrDefault();
-                var systemObjectRef = assemblyDefinition.MainModule.ImportReference(systemObjectType);
+            var mainModule = assemblyDefinition.MainModule;
 
-                var voidType = systemRuntimeAssembly.Modules
-                      .SelectMany(m => m.Types)
-                      .Where(t => t.FullName == "System.Void")
-                      .SingleOrDefault();
-                var voidTypeRef = assemblyDefinition.MainModule.ImportReference(voidType);
+            var type = new TypeDefinition("", "Program", TypeAttributes.NotPublic | TypeAttributes.Sealed, systemObjectRef);
+            mainModule.Types.Add(type);
 
-                var systemConsoleType = systemConsoleAssembly.Modules
-                                                      .SelectMany(m => m.Types)
-                                                      .Where(t => t.FullName == "System.Console")
-                                                      .SingleOrDefault();
-                assemblyDefinition.MainModule.ImportReference(systemConsoleType);
-                var writeLineMethod = systemConsoleType.Methods.SingleOrDefault(m => m.Name == "WriteLine" && m.Parameters.Count == 1 && m.Parameters[0].ParameterType.FullName == "System.String");
-                var writeLine = assemblyDefinition.MainModule.ImportReference(writeLineMethod);
+            var main = new MethodDefinition("Main", MethodAttributes.Private | MethodAttributes.Static, voidTypeRef);
+            type.Methods.Add(main);
 
-                var type = new TypeDefinition("app", "Program", TypeAttributes.NotPublic | TypeAttributes.Sealed, systemObjectRef)
+            main.Body.InitLocals = true;
+            main.Body.Variables.Add(new VariableDefinition(mainModule.TypeSystem.Int32));  //tape
+            main.Body.Variables.Add(new VariableDefinition(mainModule.TypeSystem.Int32));  //dataPointer
+
+            var il = main.Body.GetILProcessor();
+
+            // byte[] array = new byte[10000];
+            il.Emit(OpCodes.Nop);
+            il.Emit(OpCodes.Ldc_I4, 10000);
+            il.Emit(OpCodes.Newarr, byteTypeRef);
+            il.Emit(OpCodes.Stloc_0);
+
+            // int dataPointer = 5000;
+            il.Emit(OpCodes.Ldc_I4, 5000);
+            il.Emit(OpCodes.Stloc_1);
+
+
+            foreach (var instruction in rootBlock.Instructions)
+            {
+                switch (instruction)
                 {
-                    IsBeforeFieldInit = true
-                };
-                var main = new MethodDefinition("Main", MethodAttributes.Private | MethodAttributes.Static, voidTypeRef);
+                    case Block block:
+                        break;
 
-               // var writeLine = mainModule.ImportReference(typeof(Console).GetMethod("WriteLine", new[] { typeof(string) }));
+                    case WriteToConsole w:
+                        break;
 
-                var il = main.Body.GetILProcessor();
-                il.Emit(OpCodes.Nop);
-                il.Emit(OpCodes.Ldstr, "Hello, Mate!");
-                il.Emit(OpCodes.Call, writeLine);
-                il.Emit(OpCodes.Nop);
-                il.Emit(OpCodes.Ret);
+                    case ReadFromConsole r:
+                        break;
 
-                type.Methods.Add(main);
-                mainModule.Types.Add(type);
+                    case Move move:
+                        il.Emit(OpCodes.Ldloc_1);
+                        il.Emit(OpCodes.Ldc_I4, move.Quantity);
+                        il.Emit(OpCodes.Add);
+                        il.Emit(OpCodes.Stloc_1);
+                        break;
 
+                    case MoveLeft moveLeft:
+                        il.Emit(OpCodes.Ldloc_1);
+                        il.Emit(OpCodes.Ldc_I4_1);
+                        il.Emit(OpCodes.Add);
+                        il.Emit(OpCodes.Stloc_1);
+                        break;
 
-                mainModule.EntryPoint = main;
+                    case MoveRight moveRight:
+                        il.Emit(OpCodes.Ldloc_1);
+                        il.Emit(OpCodes.Ldc_I4_1);
+                        il.Emit(OpCodes.Add);
+                        il.Emit(OpCodes.Stloc_1);
+                        break;
 
-                assemblyDefinition.EntryPoint = main;
-                assemblyDefinition.Write(fileName);
+                    case Decrease decrease:
+                        break;
+
+                    case Increase increase:
+                        break;
+
+                    default:
+                        break;
+                }
             }
 
+            //    // >
+            //    il.Emit(OpCodes.Ldloc_1);
+            //il.Emit(OpCodes.Ldc_I4_1);
+            //il.Emit(OpCodes.Add);
+            //il.Emit(OpCodes.Stloc_1);
+
+            //// <
+            //il.Emit(OpCodes.Ldloc_1);
+            //il.Emit(OpCodes.Ldc_I4_1);
+            //il.Emit(OpCodes.Sub);
+            //il.Emit(OpCodes.Stloc_1);
+
+
+            il.Emit(OpCodes.Nop);
+            il.Emit(OpCodes.Ldstr, "Hello, Mate!");
+            il.Emit(OpCodes.Call, writeLine_String);
+            il.Emit(OpCodes.Nop);
+            il.Emit(OpCodes.Ret);
+
+            assemblyDefinition.EntryPoint = main;
+            assemblyDefinition.Write(fileName);
+        }
+
+
+        static TypeReference ResolveType(List<AssemblyDefinition> assemblies, AssemblyDefinition assemblyDefinition, string metadataName)
+        {
+            var foundTypes = assemblies.SelectMany(a => a.Modules)
+                                       .SelectMany(m => m.Types)
+                                       .Where(t => t.FullName == metadataName)
+                                       .ToArray();
+
+            if (foundTypes.Length == 1)
+            {
+                var typeReference = assemblyDefinition.MainModule.ImportReference(foundTypes[0]);
+                return typeReference;
+            }
+            else if (foundTypes.Length == 0)
+            {
+                throw new Exception($"{metadataName} not found");
+
+            }
+            else
+            {
+                throw new Exception($"{metadataName} ambiguous");
+            }
+        }
+
+        static MethodReference ResolveMethod(List<AssemblyDefinition> assemblies, AssemblyDefinition assemblyDefinition, string typeName, string methodName, string[] parameterTypeNames)
+        {
+            var foundTypes = assemblies.SelectMany(a => a.Modules)
+                                       .SelectMany(m => m.Types)
+                                       .Where(t => t.FullName == typeName)
+                                       .ToArray();
+            if (foundTypes.Length == 1)
+            {
+                var foundType = foundTypes[0];
+                var methods = foundType.Methods.Where(m => m.Name == methodName);
+
+                foreach (var method in methods)
+                {
+                    if (method.Parameters.Count != parameterTypeNames.Length)
+                        continue;
+
+                    var allParametersMatch = true;
+
+                    for (var i = 0; i < parameterTypeNames.Length; i++)
+                    {
+
+                        if (method.Parameters[i].ParameterType.FullName != parameterTypeNames[i])
+                        {
+                            allParametersMatch = false;
+                            break;
+                        }
+                    }
+
+                    if (!allParametersMatch)
+                        continue;
+
+
+                    return assemblyDefinition.MainModule.ImportReference(method);
+                }
+
+                throw new Exception($"{methodName} not found");
+            }
+
+            else if (foundTypes.Length == 0)
+            {
+                throw new Exception($"{typeName} not found");
+            }
+            else
+            {
+                throw new Exception($"{typeName} is ambiguous");
+            }
         }
 
 
