@@ -53,10 +53,14 @@ namespace bf_to_csharp
 
             var writeLine_String = ResolveMethod(assemblies, assemblyDefinition, "System.Console", "WriteLine", new[] { "System.String" });
             var write_Char = ResolveMethod(assemblies, assemblyDefinition, "System.Console", "Write", new[] { "System.Char" });
+            
             var readKey = ResolveMethod(assemblies, assemblyDefinition, "System.Console", "ReadKey", Array.Empty<string>());
+            var getKeyChar = ResolveMethod(assemblies, assemblyDefinition, "System.ConsoleKeyInfo", "get_KeyChar", Array.Empty<string>());
+            
             var systemObjectRef = ResolveType(assemblies, assemblyDefinition, "System.Object");
             var voidTypeRef = ResolveType(assemblies, assemblyDefinition, "System.Void");
             var byteTypeRef = ResolveType(assemblies, assemblyDefinition, "System.Byte");
+            var consoleKeyInfoRef = ResolveType(assemblies, assemblyDefinition, "System.ConsoleKeyInfo");
 
             var mainModule = assemblyDefinition.MainModule;
 
@@ -70,6 +74,7 @@ namespace bf_to_csharp
             main.Body.Variables.Add(new VariableDefinition(new ArrayType(mainModule.TypeSystem.Byte)  ));  //tape
             main.Body.Variables.Add(new VariableDefinition(mainModule.TypeSystem.Int32));  //dataPointer
             main.Body.Variables.Add(new VariableDefinition(mainModule.TypeSystem.Boolean));  //guard conditional for loop
+            main.Body.Variables.Add(new VariableDefinition(consoleKeyInfoRef));  // ConsoleRead
 
             var il = main.Body.GetILProcessor();
 
@@ -106,12 +111,12 @@ namespace bf_to_csharp
                         il.Emit(OpCodes.Ldloc_1);
                         il.Emit(OpCodes.Ldelem_U1);
                         il.Emit(OpCodes.Ldc_I4_0);
-                        il.Emit(OpCodes.Cgt_Un);
+                        il.Emit(OpCodes.Ceq);
                         il.Emit(OpCodes.Stloc_2);  //for debug only?
                         il.Emit(OpCodes.Ldloc_2);  //for debug only? 
 
                         fixups.Add(il.Body.Instructions.Count, jump.TargetLabel);
-                        il.Emit(OpCodes.Brfalse, Instruction.Create(OpCodes.Nop));
+                        il.Emit(OpCodes.Brtrue, Instruction.Create(OpCodes.Nop));
 
                         break;
 
@@ -126,14 +131,16 @@ namespace bf_to_csharp
                         il.Emit(OpCodes.Call, write_Char);
                         break;
 
-                    //case ReadFromConsole r:
-                    //    il.Emit(OpCodes.Ldloc_0);
-                    //    il.Emit(OpCodes.Ldloc_1);
-                    //    il.Emit(OpCodes.Ldelema, byteTypeRef);
-                    //    il.Emit(OpCodes.Call, readKey);
-                    //    il.Emit(OpCodes.Conv_U1);
-                    //    il.Emit(OpCodes.Stind_I1);
-                    //    break;
+                    case ReadFromConsole r:
+                        il.Emit(OpCodes.Ldloc_0);
+                        il.Emit(OpCodes.Ldloc_1);
+                        il.Emit(OpCodes.Call, readKey);
+                        il.Emit(OpCodes.Stloc_3);
+                        il.Emit(OpCodes.Ldloca,3);
+                        il.Emit(OpCodes.Call, getKeyChar);
+                        il.Emit(OpCodes.Conv_U1);
+                        il.Emit(OpCodes.Stelem_I1);
+                        break;
 
                     case Move move:
                         il.Emit(OpCodes.Ldloc_1);
