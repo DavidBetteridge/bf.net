@@ -18,6 +18,7 @@ namespace bf_to_csharp
                 return;
             }
             var sourceCodeFile = args[0];
+            var releaseMode = true;
 
             if (!File.Exists(sourceCodeFile))
             {
@@ -41,17 +42,62 @@ namespace bf_to_csharp
                 return;
             }
 
-            rootBlock = Optimiser.Optimise(rootBlock, null);
+            var optimisedCode = Optimiser.Optimise(rootBlock, null);
 
-            CheckForEmptyLoops(rootBlock, errors);
+            CheckForEmptyLoops(optimisedCode, errors);
             if (errors.Any())
             {
                 DisplayErrors(errors);
                 return;
             }
 
-            GenerateCSharp(projectName, projectFolder, rootBlock);
+            rootBlock = releaseMode switch
+            {
+                true => Lower(optimisedCode),
+                false => Lower(rootBlock),
+            };
 
+            GenerateCSharp(projectName, projectFolder, rootBlock);
+        }
+
+        private static Block Lower(Block originalBlock)
+        {
+            var newBlock = new Block();
+            var nextLabelNumber = 0;
+
+            LowerBlock(originalBlock, newBlock);
+
+            return newBlock;
+
+            void LowerBlock(Block originalBlock, Block newBlock)
+            {
+                foreach (var instruction in originalBlock.Instructions)
+                {
+                    if (instruction is Block block)
+                    {
+                        /* while (tape[dataPointer] != 0)
+                         * {
+                         *  do stuff
+                         * }
+                         * 
+                         * topOfLoop1:
+                         * if (tape[dataPointer] == 0) goto endOfLoop1
+                         * do stuff
+                         * goto topOfLoop1
+                         * endOfLoop1:
+                         */
+                        var labelNumber = nextLabelNumber;
+                        nextLabelNumber++;
+
+                        newBlock.Add(new Label($"topOfLoop{labelNumber}"));
+                        newBlock.Add(new ConditionalJump($"endOfLoop{labelNumber}"));
+                        LowerBlock(block, newBlock);
+                        newBlock.Add(new Jump($"topOfLoop{labelNumber}"));
+                        newBlock.Add(new Label($"endOfLoop{labelNumber}"));
+                    }
+                    newBlock.Add(instruction);
+                }
+            }
         }
 
         private static void CheckForEmptyLoops(Block rootBlock, List<Error> errors)
