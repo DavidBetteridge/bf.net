@@ -20,8 +20,8 @@ namespace HelloWorld
 			if (tape[dataPointer] == 0) goto loopEnd_1;
 			dataPointer+=1;
 			tape[dataPointer]+=4;
-			loopStart_1:
-			if (tape[dataPointer] == 0) goto loopEnd_1;
+			loopStart_2:
+			if (tape[dataPointer] == 0) goto loopEnd_2;
 			dataPointer+=1;
 			tape[dataPointer]+=2;
 			dataPointer+=1;
@@ -32,8 +32,8 @@ namespace HelloWorld
 			tape[dataPointer]+=1;
 			dataPointer-=4;
 			tape[dataPointer]-=1;
-			goto loopStart_1;
-			loopEnd_1:
+			goto loopStart_2;
+			loopEnd_2:
 			dataPointer+=1;
 			tape[dataPointer]+=1;
 			dataPointer+=1;
@@ -42,15 +42,15 @@ namespace HelloWorld
 			tape[dataPointer]-=1;
 			dataPointer+=2;
 			tape[dataPointer]+=1;
-			loopStart_2:
-			if (tape[dataPointer] == 0) goto loopEnd_2;
+			loopStart_3:
+			if (tape[dataPointer] == 0) goto loopEnd_3;
 			dataPointer-=1;
-			goto loopStart_2;
-			loopEnd_2:
-			dataPointer-=1;
-			tape[dataPointer]-=1;
 			goto loopStart_3;
 			loopEnd_3:
+			dataPointer-=1;
+			tape[dataPointer]-=1;
+			goto loopStart_1;
+			loopEnd_1:
 			dataPointer+=2;
 			Console.Write((char)tape[dataPointer]);
 			dataPointer+=1;

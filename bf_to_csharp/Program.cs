@@ -69,6 +69,7 @@ namespace bf_to_csharp
             main.Body.InitLocals = true;
             main.Body.Variables.Add(new VariableDefinition(new ArrayType(mainModule.TypeSystem.Byte)  ));  //tape
             main.Body.Variables.Add(new VariableDefinition(mainModule.TypeSystem.Int32));  //dataPointer
+            main.Body.Variables.Add(new VariableDefinition(mainModule.TypeSystem.Boolean));  //guard conditional for loop
 
             var il = main.Body.GetILProcessor();
 
@@ -82,14 +83,38 @@ namespace bf_to_csharp
             il.Emit(OpCodes.Ldc_I4, 5000);
             il.Emit(OpCodes.Stloc_1);
 
-
+            var labels = new Dictionary<string, int>();
+            var fixups = new Dictionary<int, string>();
             foreach (var instruction in rootBlock.Instructions)
             {
-                il.Emit(OpCodes.Ldstr, instruction.GetType().Name);
-                il.Emit(OpCodes.Call, writeLine_String);
+                //il.Emit(OpCodes.Ldstr, instruction.GetType().Name);
+                //il.Emit(OpCodes.Call, writeLine_String);
 
                 switch (instruction)
                 {
+                    case Label label:
+                        labels.Add(label.LabelName, il.Body.Instructions.Count);
+                        break;
+
+                    case Jump jump:
+                        fixups.Add(il.Body.Instructions.Count, jump.TargetLabel);
+                        il.Emit(OpCodes.Br, Instruction.Create(OpCodes.Nop));
+                        break;
+
+                    case ConditionalJump jump:
+                        il.Emit(OpCodes.Ldloc_0);
+                        il.Emit(OpCodes.Ldloc_1);
+                        il.Emit(OpCodes.Ldelem_U1);
+                        il.Emit(OpCodes.Ldc_I4_0);
+                        il.Emit(OpCodes.Cgt_Un);
+                        il.Emit(OpCodes.Stloc_2);  //for debug only?
+                        il.Emit(OpCodes.Ldloc_2);  //for debug only? 
+
+                        fixups.Add(il.Body.Instructions.Count, jump.TargetLabel);
+                        il.Emit(OpCodes.Brfalse, Instruction.Create(OpCodes.Nop));
+
+                        break;
+
                     case Block block:
                         break;
 
@@ -182,11 +207,17 @@ namespace bf_to_csharp
                 }
             }
 
-            il.Emit(OpCodes.Nop);
-            il.Emit(OpCodes.Ldstr, "Hello, Mate!");
-            il.Emit(OpCodes.Call, writeLine_String);
-            il.Emit(OpCodes.Nop);
             il.Emit(OpCodes.Ret);
+
+            foreach (var toFixup in fixups)
+            {
+                var labelName = toFixup.Value;
+                var jumpTarget = labels[labelName];
+
+                var targetInstruction = il.Body.Instructions[jumpTarget];
+                var instructionToFixup = il.Body.Instructions[toFixup.Key];
+                instructionToFixup.Operand = targetInstruction;
+            }
 
             assemblyDefinition.EntryPoint = main;
             assemblyDefinition.Write(fileName);
@@ -210,12 +241,14 @@ namespace bf_to_csharp
                     switch (instruction)
                     {
                         case Block block:
-                            newBlock.Add(new Label($"loopStart_{labelCount}"));
-                            newBlock.Add(new ConditionalJump($"loopEnd_{labelCount}"));
-                            DoWork(block, newBlock);
-                            newBlock.Add(new Jump($"loopStart_{labelCount}"));
-                            newBlock.Add(new Label($"loopEnd_{labelCount}"));
+                            var labelNumber = labelCount;
                             labelCount++;
+                            newBlock.Add(new Label($"loopStart_{labelNumber}"));
+                            newBlock.Add(new ConditionalJump($"loopEnd_{labelNumber}"));
+                            DoWork(block, newBlock);
+                            newBlock.Add(new Jump($"loopStart_{labelNumber}"));
+                            newBlock.Add(new Label($"loopEnd_{labelNumber}"));
+
                             break;
 
                         default:
