@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Text;
 
 namespace bf_to_csharp
@@ -58,6 +59,9 @@ namespace bf_to_csharp
             };
 
             GenerateCSharp(projectName, projectFolder, rootBlock);
+
+            ILGenerator.Emit(projectName, projectFolder, rootBlock, releaseMode);
+
         }
 
         private static Block Lower(Block originalBlock)
