@@ -1,0 +1,7 @@
+<Project>
+
+  <PropertyGroup>
+    <DefaultLanguageSourceExtension>.bf</DefaultLanguageSourceExtension>
+  </PropertyGroup>
+
+</Project>

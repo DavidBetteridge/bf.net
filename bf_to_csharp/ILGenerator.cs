@@ -9,15 +9,15 @@ namespace bf_to_csharp
 {
     class ILGenerator
     {
-        internal static void Emit(string projectName, string projectFolder, Block code, bool releaseMode)
+        internal static void Emit(string projectName, string filenameToCreate, Block code, bool releaseMode, List<string> references)
         {
-            var pathToSystemConsole = @"C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\3.1.0\ref\netcoreapp3.1\System.Console.dll";
+            var pathToSystemConsole = references.FirstOrDefault(r => r.EndsWith("System.Console.dll", StringComparison.InvariantCultureIgnoreCase));
+            if (string.IsNullOrWhiteSpace(pathToSystemConsole))
+                throw new Exception("Could not find a reference to System.Console.dll");
 
             var systemConsole = AssemblyDefinition.ReadAssembly(pathToSystemConsole);
             var systemConsoleType = FindType(systemConsole, "System.Console");
             var systemConsoleKeyInfoType = FindType(systemConsole, "System.ConsoleKeyInfo");
-
-            var filename = Path.Combine(projectFolder, projectName + ".dll");
 
             var assemblyNameDefinition = new AssemblyNameDefinition(projectName, new Version(1, 0, 0));
             using var assemblyDefinition = AssemblyDefinition.CreateAssembly(assemblyNameDefinition, projectName, ModuleKind.Console);
@@ -139,7 +139,7 @@ namespace bf_to_csharp
                 needFixingInstruction.Operand = targetInstruction;
             }
 
-            assemblyDefinition.Write(filename);
+            assemblyDefinition.Write(filenameToCreate);
         }
 
         private static void EmitMove(ILProcessor il, int quantity)
