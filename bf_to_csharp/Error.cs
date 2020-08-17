@@ -1,4 +1,4 @@
-﻿namespace bf_to_csharp
+﻿namespace bf
 {
     class Error
     {

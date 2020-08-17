@@ -1,13 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Reflection;
-using System.Reflection.Emit;
-using System.Text;
 
-namespace bf_to_csharp
+namespace bf
 {
     class Program
     {
@@ -15,10 +11,34 @@ namespace bf_to_csharp
         {
             if (!args.Any())
             {
-                Console.WriteLine("Please supply the path to the source code file.");
+                Console.WriteLine("Please supply folder,  target and reference parameters");
                 return;
             }
-            var sourceCodeFile = args[0];
+
+            var fileToCreate = string.Empty;
+            var references = new List<string>();
+            var projectFolder = string.Empty;
+
+            for (int argumentNumber = 0; argumentNumber < args.Length; argumentNumber++)
+            {
+                if (args[argumentNumber] == "/o")
+                {
+                    argumentNumber++;
+                    fileToCreate = args[argumentNumber];
+                }
+                else if (args[argumentNumber] == "/r")
+                {
+                    argumentNumber++;
+                    references.Add(args[argumentNumber]);
+                }
+                else
+                {
+                    projectFolder = args[argumentNumber];
+                }
+            }
+
+
+            var sourceCodeFile = Path.Combine(projectFolder, "main.bf");
             var releaseMode = true;
 
             if (!File.Exists(sourceCodeFile))
@@ -27,10 +47,7 @@ namespace bf_to_csharp
                 return;
             }
 
-            var parentFolder = Path.GetDirectoryName(sourceCodeFile);
-            var projectName = Path.GetFileNameWithoutExtension(sourceCodeFile);
-            var projectFolder = Path.Combine(parentFolder, projectName);
-            Directory.CreateDirectory(projectFolder);
+            var projectName = Path.GetFileNameWithoutExtension(fileToCreate);
 
             var sourceCode = File.ReadAllText(sourceCodeFile);
 
@@ -58,9 +75,7 @@ namespace bf_to_csharp
                 false => Lower(rootBlock),
             };
 
-            GenerateCSharp(projectName, projectFolder, rootBlock);
-
-            ILGenerator.Emit(projectName, projectFolder, rootBlock, releaseMode);
+            ILGenerator.Emit(projectName, fileToCreate, rootBlock, releaseMode, references);
 
         }
 
@@ -129,22 +144,7 @@ namespace bf_to_csharp
             Console.ResetColor();
         }
 
-        private static void GenerateCSharp(string projectName, string projectFolder, Block rootBlock)
-        {
-            var sb = new StringBuilder();
-            rootBlock.EmitCSharp(sb, 3);
 
-            File.WriteAllText(Path.Combine(projectFolder, "program.cs"), Header(projectName) + sb.ToString() + Footer());
-
-            var pathToProjectFile = Path.Combine(projectFolder, projectName + ".csproj");
-            GenerateProjectFile(pathToProjectFile);
-            var myProcess = new Process();
-            myProcess.StartInfo.UseShellExecute = false;
-            myProcess.StartInfo.FileName = "dotnet";
-            myProcess.StartInfo.Arguments = $@"build ""{pathToProjectFile}""";
-            myProcess.StartInfo.CreateNoWindow = true;
-            myProcess.Start();
-        }
 
         private static Block ParseSourceCode(string sourceCode, List<Error> errors)
         {
@@ -203,31 +203,6 @@ namespace bf_to_csharp
             return rootBlock;
         }
 
-        private static void GenerateProjectFile(string filename)
-        {
-            var contents = ReadTemplate("projectFile.txt");
-
-            File.WriteAllText(filename, contents);
-        }
-
-        private static string Header(string projectName)
-        {
-            return ReadTemplate("header.txt")
-                        .Replace("{{namespace}}", projectName);
-        }
-
-        private static string Footer() => ReadTemplate("footer.txt");
-
-        private static string ReadTemplate(string templateName)
-        {
-            var assembly = Assembly.GetExecutingAssembly();
-            var resourceName = "bf_to_csharp.Templates." + templateName;
-
-            using var stream = assembly.GetManifestResourceStream(resourceName);
-            using var reader = new StreamReader(stream);
-
-            return reader.ReadToEnd();
-        }
 
     }
 
