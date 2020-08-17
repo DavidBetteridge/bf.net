@@ -1,0 +1,1 @@
+﻿Got to File -> Preferences -> Settings -> Debug ->debug.allowBreakpointsEverywhere = true
