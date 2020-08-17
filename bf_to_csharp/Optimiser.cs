@@ -61,12 +61,12 @@
         {
             if (previous is IncreaseCell increaseCell)
             {
-                previous = new IncreaseCell(increaseCell.Quantity + offset);
+                previous = new IncreaseCell(increaseCell.Quantity + offset, previous.Location);
             }
             else
             {
                 if (previous is object && InstructionDoesSomething(previous)) newBlock.Add(previous);
-                previous = new IncreaseCell(offset);
+                previous = new IncreaseCell(offset, previous?.Location ?? 0);
             }
 
             return previous;
@@ -76,12 +76,12 @@
         {
             if (previous is Move move)
             {
-                previous = new Move(move.Quantity + offset);
+                previous = new Move(move.Quantity + offset, previous.Location);
             }
             else
             {
                 if (previous is object && InstructionDoesSomething(previous)) newBlock.Add(previous);
-                previous = new Move(offset);
+                previous = new Move(offset, previous?.Location ?? 0);
             }
 
             return previous;

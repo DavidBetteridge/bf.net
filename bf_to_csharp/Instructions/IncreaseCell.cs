@@ -4,12 +4,14 @@ namespace bf_to_csharp
 {
     class IncreaseCell : IInstruction
     {
-        public IncreaseCell(int quantity)
+        public IncreaseCell(int quantity, int location)
         {
             Quantity = quantity;
+            Location = location;
         }
 
         public int Quantity { get; }
+        public int Location { get; }
 
         public void EmitCSharp(StringBuilder sb, int indents)
         {

@@ -7,18 +7,18 @@ namespace bf_to_csharp
 {
     class Program
     {
-        static void Main(string[] args)
+        static int Main(string[] args)
         {
             if (!args.Any())
             {
                 Console.WriteLine("Please supply the path to the source code file.");
-                return;
+                return 1;
             }
 
             var filenameToCreate = string.Empty;
             var references = new List<string>();
             var sourceCodeFile = string.Empty;
-            var releaseMode = true;
+            var releaseMode = false;
             for (int argNumber = 0; argNumber < args.Length; argNumber++)
             {
                 if (args[argNumber] == "/o")
@@ -40,21 +40,21 @@ namespace bf_to_csharp
             if (!File.Exists(sourceCodeFile))
             {
                 Console.WriteLine($"The source code file {sourceCodeFile} does not exist.");
-                return;
+                return 1;
             }
 
             var projectName = Path.GetFileNameWithoutExtension(filenameToCreate);
             Console.WriteLine("Building " + projectName + "...");
 
             var sourceCode = File.ReadAllText(sourceCodeFile);
-
+            
             var errors = new List<Error>();
             var rootBlock = ParseSourceCode(sourceCode, errors);
 
             if (errors.Any())
             {
-                DisplayErrors(errors);
-                return;
+                DisplayErrors(Path.GetFullPath(sourceCodeFile), errors);
+                return 1;
             }
 
             var optimisedCode = Optimiser.Optimise(rootBlock, null);
@@ -62,8 +62,8 @@ namespace bf_to_csharp
             CheckForEmptyLoops(optimisedCode, errors);
             if (errors.Any())
             {
-                DisplayErrors(errors);
-                return;
+                DisplayErrors(Path.GetFullPath(sourceCodeFile), errors);
+                return 1;
             }
 
             rootBlock = releaseMode switch
@@ -72,7 +72,9 @@ namespace bf_to_csharp
                 false => Lower(rootBlock),
             };
 
-            ILGenerator.Emit(projectName, filenameToCreate, rootBlock, releaseMode, references);
+            ILGenerator.Emit(projectName, filenameToCreate, rootBlock, releaseMode, references, sourceCodeFile);
+
+            return 0;
         }
 
         private static Block Lower(Block originalBlock)
@@ -104,11 +106,11 @@ namespace bf_to_csharp
                         var labelNumber = nextLabelNumber;
                         nextLabelNumber++;
 
-                        newBlock.Add(new Label($"topOfLoop{labelNumber}"));
-                        newBlock.Add(new ConditionalJump($"endOfLoop{labelNumber}"));
+                        newBlock.Add(new Label($"topOfLoop{labelNumber}", block.Location));
+                        newBlock.Add(new ConditionalJump($"endOfLoop{labelNumber}", block.Location));
                         LowerBlock(block, newBlock);
-                        newBlock.Add(new Jump($"topOfLoop{labelNumber}"));
-                        newBlock.Add(new Label($"endOfLoop{labelNumber}"));
+                        newBlock.Add(new Jump($"topOfLoop{labelNumber}", block.Location));
+                        newBlock.Add(new Label($"endOfLoop{labelNumber}", block.Location));
                     }
                     newBlock.Add(instruction);
                 }
@@ -130,12 +132,12 @@ namespace bf_to_csharp
             }
         }
 
-        private static void DisplayErrors(List<Error> errors)
+        private static void DisplayErrors(string filename, List<Error> errors)
         {
             Console.ForegroundColor = ConsoleColor.Red;
             foreach (var error in errors.OrderBy(e => e.Location))
             {
-                Console.WriteLine($"Error at position {error.Location} - {error.Description}");
+                Console.Error.WriteLine(@$"{filename}(1,{error.Location},1,{error.Location+1}): {error.Description}");
             }
             Console.ResetColor();
         }
@@ -150,22 +152,22 @@ namespace bf_to_csharp
                 switch (instruction)
                 {
                     case '>':
-                        currentBlock.Add(new MoveRight());
+                        currentBlock.Add(new MoveRight(location));
                         break;
                     case '<':
-                        currentBlock.Add(new MoveLeft());
+                        currentBlock.Add(new MoveLeft(location));
                         break;
                     case '+':
-                        currentBlock.Add(new Increase());
+                        currentBlock.Add(new Increase(location));
                         break;
                     case '-':
-                        currentBlock.Add(new Decrease());
+                        currentBlock.Add(new Decrease(location));
                         break;
                     case '.':
-                        currentBlock.Add(new WriteToConsole());
+                        currentBlock.Add(new WriteToConsole(location));
                         break;
                     case ',':
-                        currentBlock.Add(new ReadFromConsole());
+                        currentBlock.Add(new ReadFromConsole(location));
                         break;
                     case '[':
                         var newBlock = new Block(currentBlock, location);
@@ -183,6 +185,7 @@ namespace bf_to_csharp
                         }
                         break;
                     default:
+                        errors.Add(new Error(location, "Unknown symbol"));
                         break;
                 }
                 location++;
