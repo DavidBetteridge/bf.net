@@ -2,13 +2,15 @@
 {
     class ConditionalJump : IInstruction
     {
-        public ConditionalJump(string targetLabelName)
+        public ConditionalJump(Location location, string targetLabelName)
         {
+            Location = location;
             TargetLabelName = targetLabelName;
         }
 
         public string TargetLabelName { get; }
 
+        public Location Location { get; }
 
     }
 

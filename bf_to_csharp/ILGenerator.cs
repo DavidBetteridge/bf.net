@@ -9,7 +9,7 @@ namespace bf
 {
     class ILGenerator
     {
-        internal static void Emit(string projectName, string filename, Block code, bool releaseMode, List<string> referencePaths)
+        internal static void Emit(string projectName, string filename, Block code, bool releaseMode, List<string> referencePaths, string fullPathToSourceCode)
         {
             var pathToSystemConsole = referencePaths.SingleOrDefault(path => path.EndsWith("System.Console.dll", StringComparison.InvariantCultureIgnoreCase));
             if (string.IsNullOrWhiteSpace(pathToSystemConsole))
@@ -37,7 +37,7 @@ namespace bf
             var systemConsoleKeyInfoReference = module.ImportReference(systemConsoleKeyInfoType);
             var keyMethod = FindMethod(module, systemConsoleKeyInfoType, "get_KeyChar");               //System.Console.ReadKey().KeyChar
 
-            var debuggableAttributeReference = FindMethod(module, debuggableAttributeType, ".ctor", "System.Boolean", "System.Boolean");             
+            var debuggableAttributeReference = FindMethod(module, debuggableAttributeType, ".ctor", "System.Boolean", "System.Boolean");
 
 
             var programClass = new TypeDefinition("", "Program", TypeAttributes.NotPublic | TypeAttributes.Sealed, module.TypeSystem.Object);
@@ -73,40 +73,42 @@ namespace bf
             var labels = new Dictionary<string, int>();
             var instructionsToFix = new Dictionary<int, string>();
 
+            var document = new Document(fullPathToSourceCode);
+
             foreach (var instruction in code.Instructions)
             {
                 switch (instruction)
                 {
                     case ReadFromConsole c:
-                        EmitReadFromConsole(readKeyMethod, keyMethod, il);
+                        EmitReadFromConsole(readKeyMethod, keyMethod, il, document, instruction);
                         break;
 
                     case WriteToConsole w:
-                        EmitWriteToConsole(module, writeMethod, il);
+                        EmitWriteToConsole(module, writeMethod, il, document, instruction);
                         break;
 
                     case Increase i:
-                        EmitIncrease(module, il, +1);
+                        EmitIncrease(module, il, +1, document, instruction);
                         break;
 
                     case Decrease i:
-                        EmitIncrease(module, il, -1);
+                        EmitIncrease(module, il, -1, document, instruction);
                         break;
 
                     case IncreaseCell i:
-                        EmitIncrease(module, il, i.Quantity);
+                        EmitIncrease(module, il, i.Quantity, document, instruction);
                         break;
 
                     case MoveRight m:
-                        EmitMove(il, +1);
+                        EmitMove(il, +1, document, instruction);
                         break;
 
                     case MoveLeft m:
-                        EmitMove(il, -1);
+                        EmitMove(il, -1, document, instruction);
                         break;
 
                     case Move m:
-                        EmitMove(il, m.Quantity);
+                        EmitMove(il, m.Quantity, document, instruction);
                         break;
 
                     case Label l:
@@ -119,17 +121,7 @@ namespace bf
                         break;
 
                     case ConditionalJump c:
-                        il.Emit(OpCodes.Ldloc_0);
-                        il.Emit(OpCodes.Ldloc_1);
-                        il.Emit(OpCodes.Ldelem_U1);
-                        il.Emit(OpCodes.Ldc_I4_0);
-                        il.Emit(OpCodes.Ceq);
-                        il.Emit(OpCodes.Stloc_3);
-                        il.Emit(OpCodes.Ldloc_3);
-
-                        instructionsToFix.Add(il.Body.Instructions.Count, c.TargetLabelName);
-                        il.Emit(OpCodes.Brtrue, Instruction.Create(OpCodes.Nop));
-
+                        EmitConditionalJump(il, instructionsToFix, c.TargetLabelName, document, instruction);
                         break;
 
                     default:
@@ -182,61 +174,106 @@ namespace bf
             }
         }
 
-        private static void EmitMove(ILProcessor il, int quantity)
+        private static void EmitConditionalJump(ILProcessor il, Dictionary<int, string> instructionsToFix, string targetLabelName, Document document, IInstruction instruction)
         {
-            il.Emit(OpCodes.Ldloc_1);
+            AddSequencePoint(il, document, instruction, il =>
+            {
+                il.Emit(OpCodes.Ldloc_0);
+                il.Emit(OpCodes.Ldloc_1);
+                il.Emit(OpCodes.Ldelem_U1);
+                il.Emit(OpCodes.Ldc_I4_0);
+                il.Emit(OpCodes.Ceq);
+                il.Emit(OpCodes.Stloc_3);
+                il.Emit(OpCodes.Ldloc_3);
 
-            il.Emit(OpCodes.Ldc_I4, Math.Abs(quantity));
-            if (quantity > 0)
-                il.Emit(OpCodes.Add);
-            else
-                il.Emit(OpCodes.Sub);
-
-            il.Emit(OpCodes.Stloc_1);
+                instructionsToFix.Add(il.Body.Instructions.Count, targetLabelName);
+                il.Emit(OpCodes.Brtrue, Instruction.Create(OpCodes.Nop));
+            });
         }
 
-        private static void EmitIncrease(ModuleDefinition module, ILProcessor il, int quantity)
+        private static void AddSequencePoint(ILProcessor il, Document document, IInstruction instruction, Action<ILProcessor> emit)
         {
-            il.Emit(OpCodes.Ldloc_0);
-            il.Emit(OpCodes.Ldloc_1);
-            il.Emit(OpCodes.Ldelema, module.TypeSystem.Byte);
-            il.Emit(OpCodes.Dup);
-            il.Emit(OpCodes.Ldind_U1);
+            var index = il.Body.Instructions.Count;
 
-            il.Emit(OpCodes.Ldc_I4, Math.Abs(quantity));
-            if (quantity > 0)
-                il.Emit(OpCodes.Add);
-            else
-                il.Emit(OpCodes.Sub);
+            emit(il);
 
-            il.Emit(OpCodes.Conv_U1);
-            il.Emit(OpCodes.Stind_I1);
+            var sequencePoint = new SequencePoint(il.Body.Instructions[index], document)
+            {
+                StartLine = 1,
+                EndLine = 1,
+                StartColumn = instruction.Location.StartColumn,
+                EndColumn = instruction.Location.StartColumn + 1,
+            };
+            il.Body.Method.DebugInformation.SequencePoints.Add(sequencePoint);
         }
 
-        private static void EmitWriteToConsole(ModuleDefinition module, MethodReference writeMethod, ILProcessor il)
+        private static void EmitMove(ILProcessor il, int quantity, Document document, IInstruction instruction)
         {
-            il.Emit(OpCodes.Ldloc_0);
-            il.Emit(OpCodes.Ldloc_1);
-            il.Emit(OpCodes.Ldelema, module.TypeSystem.Byte);
-            il.Emit(OpCodes.Ldind_U1);
-            il.Emit(OpCodes.Call, writeMethod);
+            AddSequencePoint(il, document, instruction, il =>
+            {
+                il.Emit(OpCodes.Ldloc_1);
+
+                il.Emit(OpCodes.Ldc_I4, Math.Abs(quantity));
+                if (quantity > 0)
+                    il.Emit(OpCodes.Add);
+                else
+                    il.Emit(OpCodes.Sub);
+
+                il.Emit(OpCodes.Stloc_1);
+            });
         }
 
-        private static void EmitReadFromConsole(MethodReference readKeyMethod, MethodReference keyMethod, ILProcessor il)
+        private static void EmitIncrease(ModuleDefinition module, ILProcessor il, int quantity, Document document, IInstruction instruction)
         {
-            il.Emit(OpCodes.Ldloc_0);
-            il.Emit(OpCodes.Ldloc_1);
-            il.Emit(OpCodes.Call, readKeyMethod);
-            il.Emit(OpCodes.Stloc_2);
-            il.Emit(OpCodes.Ldloca, 2);
-            il.Emit(OpCodes.Call, keyMethod);
-            il.Emit(OpCodes.Conv_U1);
-            il.Emit(OpCodes.Stelem_I1);
+            AddSequencePoint(il, document, instruction, il =>
+            {
+                il.Emit(OpCodes.Ldloc_0);
+                il.Emit(OpCodes.Ldloc_1);
+                il.Emit(OpCodes.Ldelema, module.TypeSystem.Byte);
+                il.Emit(OpCodes.Dup);
+                il.Emit(OpCodes.Ldind_U1);
+
+                il.Emit(OpCodes.Ldc_I4, Math.Abs(quantity));
+                if (quantity > 0)
+                    il.Emit(OpCodes.Add);
+                else
+                    il.Emit(OpCodes.Sub);
+
+                il.Emit(OpCodes.Conv_U1);
+                il.Emit(OpCodes.Stind_I1);
+            });
+        }
+
+        private static void EmitWriteToConsole(ModuleDefinition module, MethodReference writeMethod, ILProcessor il, Document document, IInstruction instruction)
+        {
+            AddSequencePoint(il, document, instruction, il =>
+            {
+                il.Emit(OpCodes.Ldloc_0);
+                il.Emit(OpCodes.Ldloc_1);
+                il.Emit(OpCodes.Ldelema, module.TypeSystem.Byte);
+                il.Emit(OpCodes.Ldind_U1);
+                il.Emit(OpCodes.Call, writeMethod);
+            });
+        }
+
+        private static void EmitReadFromConsole(MethodReference readKeyMethod, MethodReference keyMethod, ILProcessor il, Document document, IInstruction instruction)
+        {
+            AddSequencePoint(il, document, instruction, il =>
+            {
+                il.Emit(OpCodes.Ldloc_0);
+                il.Emit(OpCodes.Ldloc_1);
+                il.Emit(OpCodes.Call, readKeyMethod);
+                il.Emit(OpCodes.Stloc_2);
+                il.Emit(OpCodes.Ldloca, 2);
+                il.Emit(OpCodes.Call, keyMethod);
+                il.Emit(OpCodes.Conv_U1);
+                il.Emit(OpCodes.Stelem_I1);
+            });
         }
 
         private static MethodReference FindMethod(ModuleDefinition module, TypeDefinition typeDefinition, string name, string parameterType1, string parameterType2)
         {
-            var method = typeDefinition.Methods.SingleOrDefault(m => m.Name == name && m.Parameters.Count == 2 
+            var method = typeDefinition.Methods.SingleOrDefault(m => m.Name == name && m.Parameters.Count == 2
                                                                 && m.Parameters[0].ParameterType.FullName == parameterType1
                                                                 && m.Parameters[1].ParameterType.FullName == parameterType2);
             if (method is null) throw new Exception("Could not find the method " + name);

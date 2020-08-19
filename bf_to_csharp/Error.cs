@@ -2,13 +2,13 @@
 {
     class Error
     {
-        public Error(int location, string description)
+        public Error(Location location, string description)
         {
             Location = location;
             Description = description;
         }
 
-        public int Location { get; }
+        public Location Location { get; }
         public string Description { get; }
     }
 

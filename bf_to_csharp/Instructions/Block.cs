@@ -1,19 +1,18 @@
 ﻿using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Text;
 
 namespace bf
 {
     class Block : IInstruction
     {
-        private List<IInstruction> _instructions = new List<IInstruction>();
+        private readonly List<IInstruction> _instructions = new List<IInstruction>();
 
         public Block Parent { get; internal set; }
-        public int Location { get; }
+        public Location Location { get; }
 
         public ReadOnlyCollection<IInstruction> Instructions => _instructions.AsReadOnly();
 
-        public Block(Block parent = null, int location = 0)
+        public Block(Location location, Block parent = null)
         {
             Parent = parent;
             Location = location;
@@ -23,7 +22,7 @@ namespace bf
         {
             _instructions.Add(instruction);
         }
-       
+
     }
 
 }

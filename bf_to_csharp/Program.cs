@@ -86,13 +86,13 @@ namespace bf
                 false => Lower(rootBlock),
             };
 
-            ILGenerator.Emit(projectName, fileToCreate, rootBlock, releaseMode, references);
+            ILGenerator.Emit(projectName, fileToCreate, rootBlock, releaseMode, references, sourceCodeFile);
 
         }
 
         private static Block Lower(Block originalBlock)
         {
-            var newBlock = new Block();
+            var newBlock = new Block(originalBlock.Location);
             var nextLabelNumber = 0;
 
             LowerBlock(originalBlock, newBlock);
@@ -119,11 +119,11 @@ namespace bf
                         var labelNumber = nextLabelNumber;
                         nextLabelNumber++;
 
-                        newBlock.Add(new Label($"topOfLoop{labelNumber}"));
-                        newBlock.Add(new ConditionalJump($"endOfLoop{labelNumber}"));
+                        newBlock.Add(new Label(instruction.Location, $"topOfLoop{labelNumber}"));
+                        newBlock.Add(new ConditionalJump(instruction.Location, $"endOfLoop{labelNumber}"));
                         LowerBlock(block, newBlock);
-                        newBlock.Add(new Jump($"topOfLoop{labelNumber}"));
-                        newBlock.Add(new Label($"endOfLoop{labelNumber}"));
+                        newBlock.Add(new Jump(instruction.Location, $"topOfLoop{labelNumber}"));
+                        newBlock.Add(new Label(instruction.Location, $"endOfLoop{labelNumber}"));
                     }
                     newBlock.Add(instruction);
                 }
@@ -150,7 +150,7 @@ namespace bf
             Console.ForegroundColor = ConsoleColor.Red;
             foreach (var error in errors.OrderBy(e => e.Location))
             {
-                Console.WriteLine($"Error at position {error.Location} - {error.Description}");
+                Console.WriteLine($"Error at position {error.Location.StartColumn} - {error.Description}");
             }
             Console.ResetColor();
         }
@@ -159,7 +159,7 @@ namespace bf
 
         private static Block ParseSourceCode(string sourceCode, List<Error> errors)
         {
-            var rootBlock = new Block();
+            var rootBlock = new Block(new Location(0));
             var currentBlock = rootBlock;
             var location = 1;
             foreach (var instruction in sourceCode)
@@ -167,32 +167,32 @@ namespace bf
                 switch (instruction)
                 {
                     case '>':
-                        currentBlock.Add(new MoveRight());
+                        currentBlock.Add(new MoveRight(new Location(location)));
                         break;
                     case '<':
-                        currentBlock.Add(new MoveLeft());
+                        currentBlock.Add(new MoveLeft(new Location(location)));
                         break;
                     case '+':
-                        currentBlock.Add(new Increase());
+                        currentBlock.Add(new Increase(new Location(location)));
                         break;
                     case '-':
-                        currentBlock.Add(new Decrease());
+                        currentBlock.Add(new Decrease(new Location(location)));
                         break;
                     case '.':
-                        currentBlock.Add(new WriteToConsole());
+                        currentBlock.Add(new WriteToConsole(new Location(location)));
                         break;
                     case ',':
-                        currentBlock.Add(new ReadFromConsole());
+                        currentBlock.Add(new ReadFromConsole(new Location(location)));
                         break;
                     case '[':
-                        var newBlock = new Block(currentBlock, location);
+                        var newBlock = new Block(new Location(location), currentBlock);
                         currentBlock.Add(newBlock);
                         currentBlock = newBlock;
                         break;
                     case ']':
                         if (currentBlock.Parent is null)
                         {
-                            errors.Add(new Error(location, "] does not have a matching ["));
+                            errors.Add(new Error(new Location(location), "] does not have a matching ["));
                         }
                         else
                         {

@@ -4,7 +4,7 @@
     {
         public static Block Optimise(Block originalBlock, Block parentBlock)
         {
-            var newBlock = new Block(parentBlock, originalBlock.Location);
+            var newBlock = new Block(originalBlock.Location, parentBlock);
 
             var previous = default(IInstruction);
             foreach (var instruction in originalBlock.Instructions)
@@ -61,12 +61,12 @@
         {
             if (previous is IncreaseCell increaseCell)
             {
-                previous = new IncreaseCell(increaseCell.Quantity + offset);
+                previous = new IncreaseCell(increaseCell.Location, increaseCell.Quantity + offset);
             }
             else
             {
                 if (previous is object && InstructionDoesSomething(previous)) newBlock.Add(previous);
-                previous = new IncreaseCell(offset);
+                previous = new IncreaseCell(newBlock.Location, offset);
             }
 
             return previous;
@@ -76,12 +76,12 @@
         {
             if (previous is Move move)
             {
-                previous = new Move(move.Quantity + offset);
+                previous = new Move(previous.Location, move.Quantity + offset);
             }
             else
             {
                 if (previous is object && InstructionDoesSomething(previous)) newBlock.Add(previous);
-                previous = new Move(offset);
+                previous = new Move(newBlock.Location, offset);
             }
 
             return previous;
