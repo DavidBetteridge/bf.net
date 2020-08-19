@@ -18,6 +18,7 @@ namespace bf
             var fileToCreate = string.Empty;
             var references = new List<string>();
             var projectFolder = string.Empty;
+            var releaseMode = true;
 
             for (int argumentNumber = 0; argumentNumber < args.Length; argumentNumber++)
             {
@@ -31,6 +32,11 @@ namespace bf
                     argumentNumber++;
                     references.Add(args[argumentNumber]);
                 }
+                else if (args[argumentNumber] == "-c" || args[argumentNumber] == "--configuration")
+                {
+                    argumentNumber++;
+                    releaseMode = args[argumentNumber].Equals("release", StringComparison.InvariantCultureIgnoreCase);
+                }
                 else
                 {
                     projectFolder = args[argumentNumber];
@@ -39,13 +45,18 @@ namespace bf
 
 
             var sourceCodeFile = Path.Combine(projectFolder, "main.bf");
-            var releaseMode = true;
+            
 
             if (!File.Exists(sourceCodeFile))
             {
                 Console.WriteLine($"The source code file {sourceCodeFile} does not exist.");
                 return;
             }
+
+            if (releaseMode)
+                Console.WriteLine("Building in release mode");
+            else
+                Console.WriteLine("Building in debug mode");
 
             var projectName = Path.GetFileNameWithoutExtension(fileToCreate);
 

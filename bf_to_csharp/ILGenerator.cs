@@ -15,9 +15,17 @@ namespace bf
             if (string.IsNullOrWhiteSpace(pathToSystemConsole))
                 throw new Exception("Could not find the reference to System.Console.dll");
 
+            var pathToSystemRuntime = referencePaths.SingleOrDefault(path => path.EndsWith("System.Runtime.dll", StringComparison.InvariantCultureIgnoreCase));
+            if (string.IsNullOrWhiteSpace(pathToSystemRuntime))
+                throw new Exception("Could not find the reference to System.Runtime.dll");
+
             var systemConsole = AssemblyDefinition.ReadAssembly(pathToSystemConsole);
             var systemConsoleType = FindType(systemConsole, "System.Console");
             var systemConsoleKeyInfoType = FindType(systemConsole, "System.ConsoleKeyInfo");
+
+            var systemRuntime = AssemblyDefinition.ReadAssembly(pathToSystemRuntime);
+            var debuggableAttributeType = FindType(systemRuntime, "System.Diagnostics.DebuggableAttribute");
+
 
             var assemblyNameDefinition = new AssemblyNameDefinition(projectName, new Version(1, 0, 0));
             using var assemblyDefinition = AssemblyDefinition.CreateAssembly(assemblyNameDefinition, projectName, ModuleKind.Console);
@@ -29,6 +37,9 @@ namespace bf
             var systemConsoleKeyInfoReference = module.ImportReference(systemConsoleKeyInfoType);
             var keyMethod = FindMethod(module, systemConsoleKeyInfoType, "get_KeyChar");               //System.Console.ReadKey().KeyChar
 
+            var debuggableAttributeReference = FindMethod(module, debuggableAttributeType, ".ctor", "System.Boolean", "System.Boolean");             
+
+
             var programClass = new TypeDefinition("", "Program", TypeAttributes.NotPublic | TypeAttributes.Sealed, module.TypeSystem.Object);
             module.Types.Add(programClass);
 
@@ -37,8 +48,12 @@ namespace bf
             assemblyDefinition.EntryPoint = mainMethod;
 
             mainMethod.Body.InitLocals = true;
-            mainMethod.Body.Variables.Add(new VariableDefinition(new ArrayType(module.TypeSystem.Byte)));       //0 tape
-            mainMethod.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Int32));                     //1 pointer
+
+            var tape = new VariableDefinition(new ArrayType(module.TypeSystem.Byte));
+            mainMethod.Body.Variables.Add(tape);       //0 tape
+
+            var dataPointer = new VariableDefinition(module.TypeSystem.Int32);
+            mainMethod.Body.Variables.Add(dataPointer);                     //1 pointer
             mainMethod.Body.Variables.Add(new VariableDefinition(systemConsoleKeyInfoReference));               //2
             mainMethod.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Boolean));                   //3 compariasion
 
@@ -139,7 +154,32 @@ namespace bf
                 needFixingInstruction.Operand = targetInstruction;
             }
 
-            assemblyDefinition.Write(filename);
+            if (releaseMode)
+            {
+                assemblyDefinition.Write(filename);
+            }
+            else
+            {
+                var debuggableAttribute = new CustomAttribute(debuggableAttributeReference);
+                debuggableAttribute.ConstructorArguments.Add(new CustomAttributeArgument(module.TypeSystem.Boolean, true));
+                debuggableAttribute.ConstructorArguments.Add(new CustomAttributeArgument(module.TypeSystem.Boolean, true));
+                assemblyDefinition.CustomAttributes.Add(debuggableAttribute);
+
+                mainMethod.DebugInformation.Scope = new ScopeDebugInformation(mainMethod.Body.Instructions.First(), mainMethod.Body.Instructions.Last());
+                mainMethod.DebugInformation.Scope.Variables.Add(new VariableDebugInformation(tape, "Tape"));
+                mainMethod.DebugInformation.Scope.Variables.Add(new VariableDebugInformation(dataPointer, "DataPointer"));
+
+                var symbolsPath = Path.ChangeExtension(filename, ".pdb");
+                using var symbolsStream = File.Create(symbolsPath);
+                var writerParameters = new WriterParameters
+                {
+                    WriteSymbols = true,
+                    SymbolStream = symbolsStream,
+                    SymbolWriterProvider = new PortablePdbWriterProvider()
+                };
+
+                assemblyDefinition.Write(filename, writerParameters);
+            }
         }
 
         private static void EmitMove(ILProcessor il, int quantity)
@@ -192,6 +232,16 @@ namespace bf
             il.Emit(OpCodes.Call, keyMethod);
             il.Emit(OpCodes.Conv_U1);
             il.Emit(OpCodes.Stelem_I1);
+        }
+
+        private static MethodReference FindMethod(ModuleDefinition module, TypeDefinition typeDefinition, string name, string parameterType1, string parameterType2)
+        {
+            var method = typeDefinition.Methods.SingleOrDefault(m => m.Name == name && m.Parameters.Count == 2 
+                                                                && m.Parameters[0].ParameterType.FullName == parameterType1
+                                                                && m.Parameters[1].ParameterType.FullName == parameterType2);
+            if (method is null) throw new Exception("Could not find the method " + name);
+
+            return module.ImportReference(method);
         }
 
         private static MethodReference FindMethod(ModuleDefinition module, TypeDefinition typeDefinition, string name, string parameterType)
